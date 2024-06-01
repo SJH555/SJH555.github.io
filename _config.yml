@@ -37,8 +37,8 @@ social:
   email:  jiahao.song.me@gmail.com
   links:
     # The first element serves as the copyright owner's link
-    - https://x.com/home
     - https://github.com/SJH555
+    # - https://x.com/home
     # Uncomment below to add more social links
     # - https://www.facebook.com/username
     # - https://www.linkedin.com/in/username
@@ -92,12 +92,10 @@ theme_mode: # [light | dark]
 # will be added to all media resources (site avatar, posts' images, audio and video files) paths starting with '/'
 #
 # e.g. 'https://cdn.com'
-cdn:
+cdn: 
 
 # the avatar on sidebar, support local or CORS resources
-avatar: ./assets/Avatar.jpg
-# the logo of site
-logo: ./assets/logo.jpg
+avatar: ./assets/avatar.png
 
 # The URL of the site-wide social preview image used in SEO `og:image` meta tag.
 # It can be overridden by a customized `page.image` in front matter.
