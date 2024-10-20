@@ -418,18 +418,80 @@ public PasswordEncoder passwordEncoder() {
 	若信息无误且未到认证过期时间则放行请求
 	若信息有误或已到认证过期时间则直接返回结果，不再执行后续流程
 
-要实现此功能，即需要自定义一个token认证过滤器，在每次请求时对请求进行拦截，并获取其中的token信息，
-由于在过滤器链中，真正的认证流程是由**UsernamePasswordAuthenticationFilter** 内部开始的，因此可以
+要实现此功能，即需要自定义一个token认证过滤器，在每次请求时对请求进行拦截，并校验其中的token信息，
+由于在过滤器链中，真正的认证流程是由**UsernamePasswordAuthenticationFilter** 内部开始的，因此
 把自定义的token认证过滤器放在该过滤器前即可。
 
 
 
 ### 5.1、自定义token认证过滤器
 
-自定义token认证过滤器，示例代码如下
+自定义token认证过滤器，示例代码如下：
+
+可以看到，该过滤器继承了**OncePerRequestFilter** 这个过滤器的基类，确保对每个请求只进行一次拦截，这里不对其实现原理作具体阐述。
 
 ```java
+@Component
+@Log4j2
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    @Resource
+    private RedisCache redisCache;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain) throws ServletException, IOException {
+        // 获取请求头
+        String authorization = request.getHeader("Authorization");
+        if (Objects.isNull(authorization)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        // 解析
+        String token = authorization.substring(6).trim();
+        String userId;
+        try {
+            Claims claims = JwtUtil.parseClaims(token);
+            userId = claims.getSubject();
+        }catch (Exception e) {
+            log.error("token解析失败");
+            request.setAttribute("filter.error", "token解析失败");
+            // 将异常分发到对应控制器，交由全局异常处理器返回
+            request.getRequestDispatcher("/error/throw").forward(request, response);
+            return;
+        }
+        // 校验身份信息
+        LoginUser cacheObject = redisCache.getCacheObject("login-user:" + userId);
+        if (Objects.isNull(cacheObject)) {
+            log.error("用户尚未登录");
+            request.setAttribute("filter.error", "用户尚未登录");
+            // 将异常分发到对应控制器，交由全局异常处理器返回
+            request.getRequestDispatcher("/error/throw").forward(request, response);
+            return;
+        }
+        // 校验成功，放行请求
+        filterChain.doFilter(request, response);
+    }
+}
 ```
 
 
+
+### 5.2、设置过滤器执行优先级
+
+由于用户token信息的校验流程始终应该是位于**UsernamePasswordAuthenticationFilter** 认证过滤器之前执行，因此需要将该过滤器的优先级设置于认证过滤器之前，修改过滤器链代码如下：
+
+这里有个疑问：上文中我们看到在实际开发的过滤器链中，并不存在UsernamePasswordAuthenticationFilter过滤器，那么在此处设置过滤器链的位置是否能生效？
+
+答案：可以，因为在SpringSecurity中，项目启动时会将所需的过滤器链优先级提前设置好（优先级以**Integer** 类型的整数来判定），因此即使UsernamePasswordAuthenticationFilter过滤器实际不存在于过滤器链中，但是仍可以获取其优先级，并将JWT认证过滤器置于更高一级的执行位置。
+
+```java
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        // 设置认证相关，在此省略不写
+        ...
+        // 设置过滤器执行优先级
+        http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
+```
 
